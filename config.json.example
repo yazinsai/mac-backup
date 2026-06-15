@@ -1,0 +1,25 @@
+{
+  "s3_bucket": "s3://YOUR-ACCOUNT-ID-mac-backup",
+  "aws_cli": "/usr/local/bin/aws",
+  "backup_root": "~/.backup",
+  "sync_roots": {
+    "Documents": "~/Documents",
+    "Desktop": "~/Desktop",
+    "Pictures": "~/Pictures",
+    "projects": "~/projects"
+  },
+  "personal_dirs": ["Documents", "Desktop", "Pictures"],
+  "projects_dir": "projects",
+  "desktop_sync_excludes": ["local/*"],
+  "fsevents_skip_paths": [
+    "~/Desktop/local",
+    "~/Pictures/Photos Library.photoslibrary",
+    "~/Pictures/Photo Booth Library"
+  ],
+  "schedule": {
+    "primary_hour": 3,
+    "fallback_hour": 12,
+    "projects_weekly_sunday_3am": true
+  },
+  "launchd_label": "com.example.mac-backup"
+}
