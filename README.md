@@ -101,7 +101,7 @@ Edit `~/.backup/config.json`:
 
 - `s3_bucket` → `s3://YOUR-ACCOUNT-ID-mac-backup`
 - `launchd_label` → unique reverse-DNS label, e.g. `com.yourname.mac-backup`
-- Adjust `sync_roots` if your home layout differs (default assumes `~/projects`)
+- Adjust `sync_roots` to define the exact local roots that are allowed to sync
 
 ### 4. Install
 
@@ -154,9 +154,9 @@ See `config.json.example`. Key fields:
 | Field | Purpose |
 |-------|---------|
 | `s3_bucket` | Destination `s3://...` URI |
-| `sync_roots` | Top-level dirs watched by FSEvents |
-| `personal_dirs` | Daily incremental roots |
-| `desktop_sync_excludes` | Extra excludes when syncing Desktop (`local/*`) |
+| `sync_roots` | Allowed sync roots, mapped from S3 prefix name to local path |
+| `personal_dirs` | Daily incremental root names; must be keys in `sync_roots` |
+| `sync_excludes` | Per-root AWS sync exclude patterns, keyed by `sync_roots` name |
 | `fsevents_skip_paths` | FS paths that should not trigger a sync |
 | `schedule.primary_hour` | Main run (default 3) |
 | `schedule.fallback_hour` | Second chance if asleep (default 12) |

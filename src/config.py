@@ -30,10 +30,15 @@ def load_config() -> dict:
         name: expand(p) for name, p in cfg.get("sync_roots", {}).items()
     }
     skip_paths = [expand(p) for p in cfg.get("fsevents_skip_paths", [])]
+    sync_excludes = dict(cfg.get("sync_excludes", {}))
+    if "desktop_sync_excludes" in cfg and "Desktop" not in sync_excludes:
+        sync_excludes["Desktop"] = cfg["desktop_sync_excludes"]
+
     return {
         **cfg,
         "backup_root": backup_root,
         "sync_roots": sync_roots,
+        "sync_excludes": sync_excludes,
         "fsevents_skip_paths": skip_paths,
         "state_path": backup_root / "state" / "fsevents.json",
         "fsevents_bin": backup_root / "bin" / "fsevents-changes",
@@ -55,7 +60,13 @@ if __name__ == "__main__":
         print(cfg["backup_root"])
     elif key == "projects_dir":
         print(cfg.get("projects_dir", "projects"))
+    elif key == "sync_roots_json":
+        print(json.dumps(cfg["sync_roots"], default=str))
+    elif key == "sync_excludes_json":
+        target = sys.argv[2] if len(sys.argv) > 2 else None
+        excludes = cfg.get("sync_excludes", {})
+        print(json.dumps(excludes.get(target, []) if target else excludes))
     elif key == "desktop_excludes_json":
-        print(json.dumps(cfg.get("desktop_sync_excludes", [])))
+        print(json.dumps(cfg.get("sync_excludes", {}).get("Desktop", [])))
     else:
         print(json.dumps(cfg, default=str))

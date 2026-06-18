@@ -18,6 +18,14 @@ S3_BUCKET=$(cfg s3_bucket)
 AWS=$(cfg aws_cli)
 LOG="$BACKUP_ROOT/logs/backup-$(date +%Y-%m-%d).log"
 PROJECTS_DIR=$(cfg projects_dir)
+typeset -A SYNC_ROOTS
+ALLOWED_TARGETS=()
+while IFS=$'\t' read -r target source; do
+  if [[ -n "$target" && -n "$source" ]]; then
+    SYNC_ROOTS[$target]="$source"
+    ALLOWED_TARGETS+=("$target")
+  fi
+done < <(cfg sync_roots_json | python3 -c 'import json,sys; roots=json.load(sys.stdin); [print(f"{name}\t{path}") for name, path in roots.items()]')
 
 EXCLUDES=(
   --exclude "*/node_modules/*"
@@ -72,16 +80,29 @@ sync_dir() {
   local d=$1
   local partial=$2
   local rc=0
+  local source=""
   local extra=()
 
-  if [[ "$d" == "Desktop" ]]; then
-    while IFS= read -r ex; do
-      [[ -n "$ex" ]] && extra+=(--exclude "$ex")
-    done < <(cfg desktop_excludes_json | python3 -c 'import json,sys; [print(x) for x in json.load(sys.stdin)]')
+  if [[ -z "$d" || "$d" == /* || "$d" == *..* ]]; then
+    echo "ERROR: refusing unsafe sync target: ${d:-<empty>}" >> "$partial"
+    return 1
+  fi
+  if (( ! ${ALLOWED_TARGETS[(Ie)$d]} )); then
+    echo "ERROR: refusing unconfigured sync target: $d" >> "$partial"
+    return 1
+  fi
+  source="${SYNC_ROOTS[$d]}"
+  if [[ -z "$source" || ! -d "$source" ]]; then
+    echo "ERROR: refusing missing configured source for $d: ${source:-<empty>}" >> "$partial"
+    return 1
   fi
 
-  echo "--- Syncing $d ---" >> "$partial"
-  "$AWS" s3 sync "$HOME/$d" "$S3_BUCKET/$d" \
+  while IFS= read -r ex; do
+    [[ -n "$ex" ]] && extra+=(--exclude "$ex")
+  done < <(cfg sync_excludes_json "$d" | python3 -c 'import json,sys; [print(x) for x in json.load(sys.stdin)]')
+
+  echo "--- Syncing $d from $source ---" >> "$partial"
+  "$AWS" s3 sync "$source" "$S3_BUCKET/$d" \
     --storage-class DEEP_ARCHIVE \
     --no-follow-symlinks \
     "${EXCLUDES[@]}" \
@@ -121,7 +142,10 @@ plan_json=$(BACKUP_WEEKLY_PROJECTS="$weekly_projects" python3 "$FSEVENTS_PLAN" p
 
 echo "--- FSEvents plan: $plan_json ---" >> "$LOG"
 
-targets=("${(@f)$(python3 -c 'import json,sys; d=json.load(sys.stdin); print("\n".join(d.get("targets",[])))' <<< "$plan_json")}")
+targets=()
+while IFS= read -r target; do
+  [[ -n "$target" ]] && targets+=("$target")
+done < <(python3 -c 'import json,sys; d=json.load(sys.stdin); print("\n".join(d.get("targets",[])))' <<< "$plan_json")
 new_event_id=$(python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("new_event_id") or "")' <<< "$plan_json")
 first_run=$(python3 -c 'import json,sys; d=json.load(sys.stdin); print("1" if d.get("first_run") else "0")' <<< "$plan_json")
 
@@ -133,8 +157,12 @@ if [ ${#targets[@]} -eq 0 ]; then
 fi
 
 pids=()
-for d in "${targets[@]}"; do
-  ( sync_dir "$d" "$tmpdir/$d.log" ) &
+partials=()
+for (( i = 1; i <= ${#targets[@]}; i++ )); do
+  d="${targets[$i]}"
+  partial="$tmpdir/target-$i.log"
+  partials+=("$partial")
+  ( sync_dir "$d" "$partial" ) &
   pids+=($!)
 done
 
@@ -142,8 +170,8 @@ for pid in $pids; do
   wait "$pid" || sync_rc=$?
 done
 
-for d in "${targets[@]}"; do
-  [ -f "$tmpdir/$d.log" ] && cat "$tmpdir/$d.log" >> "$LOG"
+for partial in "${partials[@]}"; do
+  [ -f "$partial" ] && cat "$partial" >> "$LOG"
 done
 
 if [ "$sync_rc" -eq 0 ]; then

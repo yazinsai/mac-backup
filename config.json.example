@@ -10,7 +10,9 @@
   },
   "personal_dirs": ["Documents", "Desktop", "Pictures"],
   "projects_dir": "projects",
-  "desktop_sync_excludes": ["local/*"],
+  "sync_excludes": {
+    "Desktop": ["local/*"]
+  },
   "fsevents_skip_paths": [
     "~/Desktop/local",
     "~/Pictures/Photos Library.photoslibrary",

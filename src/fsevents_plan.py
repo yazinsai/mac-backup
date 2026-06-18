@@ -54,26 +54,47 @@ def root_for_path(cfg: dict, path: str) -> str | None:
         pass
 
     for skip in cfg["fsevents_skip_paths"]:
+        try:
+            skip = Path(skip).resolve()
+        except OSError:
+            skip = Path(skip)
         if p == skip or skip in p.parents:
             return None
 
     for name, root in cfg["sync_roots"].items():
+        try:
+            root = Path(root).resolve()
+        except OSError:
+            root = Path(root)
         if p == root or root in p.parents:
             return name
     return None
+
+
+def configured_targets(cfg: dict) -> tuple[list[str], list[str], str | None]:
+    all_targets = list(cfg["sync_roots"].keys())
+    projects_dir = cfg.get("projects_dir")
+    personal = cfg.get("personal_dirs")
+
+    if personal is None:
+        personal_targets = [t for t in all_targets if t != projects_dir]
+    else:
+        personal_targets = [t for t in personal if t in cfg["sync_roots"]]
+
+    return all_targets, personal_targets, projects_dir
 
 
 def plan_sync_targets(cfg: dict, *, weekly_projects: bool) -> dict:
     state = load_state(cfg)
     since_id = int(state.get("event_id", 0))
     first_run = not state.get("initialized", False)
-    personal = cfg.get("personal_dirs", ["Documents", "Desktop", "Pictures"])
-    projects_dir = cfg.get("projects_dir", "projects")
+    all_targets, personal, projects_dir = configured_targets(cfg)
 
     if first_run or since_id == 0:
         targets = list(personal)
-        if weekly_projects:
+        if weekly_projects and projects_dir in cfg["sync_roots"]:
             targets.append(projects_dir)
+        targets = [d for d in all_targets if d in targets]
         return {
             "first_run": True,
             "targets": targets,
@@ -108,12 +129,11 @@ def plan_sync_targets(cfg: dict, *, weekly_projects: bool) -> dict:
         targets.add(root)
         reasons.setdefault(root, "fsevents_change")
 
-    if weekly_projects:
+    if weekly_projects and projects_dir in cfg["sync_roots"]:
         targets.add(projects_dir)
         reasons[projects_dir] = "weekly_sunday_3am"
 
-    order = [*personal, projects_dir]
-    ordered = [d for d in order if d in targets]
+    ordered = [d for d in all_targets if d in targets]
 
     return {
         "first_run": False,
