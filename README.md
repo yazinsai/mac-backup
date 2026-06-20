@@ -32,12 +32,11 @@ It watches the folders you choose, works out what changed, and only syncs the co
 
 ## Why Use This?
 
-- 🧊 **Storage is super cheap.** Files go to S3 Glacier Deep Archive, which is made for low-cost long-term storage.
-- ⚡ **It only uploads what changed.** FSEvents tells the script which roots need work, so most runs are quick.
-- 🧹 **It skips the junk.** Exclude folders like `node_modules`, `.venv`, `dist`, `.next`, caches, downloads, and other rebuildable files.
-- 🔒 **It will not wander off.** Only folders listed in `sync_roots` are allowed to sync, and unsafe targets are rejected.
-- 🕒 **It runs on its own.** `launchd` can run it daily, weekly, or however you schedule it.
-- 🪣 **You own the bucket.** Backups live in your AWS account, with your IAM policy and your lifecycle choices.
+| | |
+| --- | --- |
+| 🧊 Storage is super cheap | ⚡ Only uploads what changed |
+| 🧹 Skips the junk | 🔒 Keeps backup scope safe |
+| 🕒 Runs on its own | 🪣 You own the bucket |
 
 ## Quick Start
 
