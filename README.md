@@ -1,58 +1,32 @@
 # mac-backup
 
-Incremental Mac → S3 Glacier Deep Archive backup using **FSEvents** (only sync changed folders) and **aws s3 sync** (only upload changed files).
+Simple, cheap, incremental macOS backups to S3 Glacier Deep Archive.
 
-Designed for developer machines: aggressive excludes for `node_modules`, build artifacts, Apple photo library churn, etc.
+`mac-backup` is for people who want a real backup of their important Mac folders without paying for a full cloud-drive product, uploading the same files over and over, or accidentally backing up every build artifact on the machine.
 
-## How it works
+It watches the folders you choose, works out what changed, and only syncs the configured roots that need attention. Your data lands in your own S3 bucket using Glacier Deep Archive, so long-term storage stays cheap.
 
-```
-launchd (3am + 12pm fallback)
-    └── s3-backup.sh
-            ├── fsevents_plan.py   → which roots changed since last run?
-            ├── fsevents-changes   → native FSEvents replay (C)
-            └── aws s3 sync          → upload deltas to S3 Deep Archive
-```
+## Why Use This?
 
-| Schedule | What syncs |
-|----------|------------|
-| Daily (if FSEvents sees changes) | `Documents`, `Desktop`†, `Pictures` |
-| Sunday 3am only | `~/projects` |
-| No changes | skip entirely (~seconds) |
+- You keep control. Backups go to your own AWS account, not a third-party backup service.
+- You save money. Glacier Deep Archive is built for cheap long-term storage.
+- You avoid noisy uploads. Common junk like dependencies, build output, caches, and local scratch folders can be excluded.
+- You do not need to remember it. `launchd` runs backups on a schedule.
+- You can trust the scope. The tool only syncs roots listed in `sync_roots`, and refuses unsafe targets.
+- You get fast no-op runs. If nothing important changed, the backup can finish in seconds.
 
-† `Desktop/local/*` is excluded from **new** uploads but existing S3 copies are kept (no `--delete`).
+## Quick Start
 
-## Repo layout
+### 1. Install prerequisites
 
-```
-mac-backup/
-├── README.md
-├── install.sh                 # deploy to ~/.backup + load launchd
-├── config.json.example        # copy → ~/.backup/config.json
-├── scripts/
-│   └── s3-backup.sh           # main backup entrypoint
-├── src/
-│   ├── fsevents-changes.c     # FSEvents replay binary (compiled on install)
-│   ├── fsevents_plan.py       # maps FS events → sync targets
-│   └── config.py              # shared config loader
-├── launchd/
-│   └── com.macbackup.s3.plist.template
-└── tools/
-    └── purge-s3-junk.sh       # optional: delete build junk already in S3
+```bash
+xcode-select --install
+brew install awscli git
 ```
 
-Runtime state lives in `~/.backup/` (not in git): logs, FSEvents cursor, lock files.
+`python3` is also required. The system Python that ships with macOS is enough for the included scripts.
 
-## New machine setup
-
-### 1. Prerequisites
-
-- macOS with Xcode Command Line Tools (`xcode-select --install`)
-- [AWS CLI v2](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)
-- `python3` (macOS system Python is fine)
-- `gh` + git (to clone this repo)
-
-### 2. Create S3 bucket + IAM user
+### 2. Create an S3 bucket
 
 ```bash
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
@@ -61,7 +35,13 @@ BUCKET="${ACCOUNT_ID}-mac-backup"
 aws s3 mb "s3://${BUCKET}" --region us-east-1
 ```
 
-Create an IAM user (e.g. `mac-backer-upper`) with this policy (replace bucket name):
+Create AWS credentials with access to that bucket, then configure the AWS CLI:
+
+```bash
+aws configure
+```
+
+Minimum IAM policy:
 
 ```json
 {
@@ -81,58 +61,112 @@ Create an IAM user (e.g. `mac-backer-upper`) with this policy (replace bucket na
 }
 ```
 
-Configure credentials:
-
-```bash
-aws configure
-# Access key, secret, region (e.g. us-east-1), json output
-```
-
 ### 3. Clone and configure
 
 ```bash
-git clone git@github.com:yazinsai/mac-backup.git
+git clone https://github.com/YOUR-ORG/mac-backup.git
 cd mac-backup
 
-cp config.json.example ~/.backup/config.json   # install.sh also does this on first run
+mkdir -p ~/.backup
+cp config.json.example ~/.backup/config.json
 ```
 
 Edit `~/.backup/config.json`:
 
-- `s3_bucket` → `s3://YOUR-ACCOUNT-ID-mac-backup`
-- `launchd_label` → unique reverse-DNS label, e.g. `com.yourname.mac-backup`
-- Adjust `sync_roots` to define the exact local roots that are allowed to sync
+- Set `s3_bucket` to your bucket, for example `s3://YOUR-BUCKET-NAME`.
+- Set `launchd_label` to a unique reverse-DNS label, for example `com.example.mac-backup`.
+- Adjust `sync_roots` to the exact local folders you want backed up.
+- Adjust `personal_dirs`, `projects_dir`, and `sync_excludes` to match your machine.
 
-### 4. Install
+### 4. Install the launchd job
 
 ```bash
 chmod +x install.sh
 ./install.sh
 ```
 
-This will:
+The installer compiles the FSEvents helper, copies runtime files into `~/.backup/`, installs the launchd agent, and seeds the FSEvents cursor so the first incremental run does not blindly upload everything.
 
-- compile `fsevents-changes` into `~/.backup/bin/`
-- copy scripts into `~/.backup/`
-- install + load the launchd agent
-- seed the FSEvents cursor (avoids re-uploading everything on first incremental run)
-
-### 5. Wake schedule (recommended)
-
-`launchd` won't fire at 3am if the Mac is asleep:
-
-```bash
-sudo pmset repeat wakeorpoweron MTWRFSU 03:00:00
-```
-
-### 6. Test
+### 5. Test it
 
 ```bash
 ~/.backup/s3-backup.sh
 tail -f ~/.backup/logs/backup-$(date +%Y-%m-%d).log
 ```
 
-Touch a file in `Documents/`, run again — should sync only `Documents`.
+After that, change a file inside one configured root and run the backup again. The log should show only that root being synced.
+
+## What You Get
+
+- A scheduled backup job that runs in the background.
+- Incremental syncs based on macOS FSEvents.
+- Low-cost storage in S3 Glacier Deep Archive.
+- Clear daily logs in `~/.backup/logs/`.
+- Failure notifications without noisy success notifications.
+- Configurable backup roots, schedules, and exclude rules.
+- Guardrails that prevent empty, absolute, parent-directory, or unconfigured sync targets.
+
+## How It Works
+
+```text
+launchd
+  └── s3-backup.sh
+        ├── fsevents_plan.py   -> decide which configured roots changed
+        ├── fsevents-changes   -> replay native macOS FSEvents
+        └── aws s3 sync        -> upload deltas to S3 Deep Archive
+```
+
+Runtime state lives in `~/.backup/`:
+
+- `bin/` compiled helper binaries
+- `lib/` shared Python config loader
+- `logs/` daily backup logs
+- `state/` FSEvents cursor and planner state
+
+## Configuration
+
+Start from `config.json.example`.
+
+| Field | Purpose |
+|-------|---------|
+| `s3_bucket` | Destination bucket URI, like `s3://YOUR-BUCKET-NAME` |
+| `aws_cli` | Path to the AWS CLI binary |
+| `backup_root` | Runtime install directory; defaults to `~/.backup` |
+| `sync_roots` | Allowed backup roots, mapped from S3 prefix name to local path |
+| `personal_dirs` | Root names considered for normal incremental backups; must be keys in `sync_roots` |
+| `projects_dir` | Optional root name for less frequent project/code backups |
+| `sync_excludes` | Per-root AWS sync exclude patterns, keyed by `sync_roots` name |
+| `fsevents_skip_paths` | Local paths that should not trigger a sync |
+| `schedule.primary_hour` | Main launchd run hour |
+| `schedule.fallback_hour` | Second chance run hour if the Mac was asleep |
+| `launchd_label` | Unique launchd job label |
+
+Example custom roots:
+
+```json
+{
+  "sync_roots": {
+    "Documents": "~/Documents",
+    "Design": "~/Design",
+    "Code": "~/Code"
+  },
+  "personal_dirs": ["Documents", "Design"],
+  "projects_dir": "Code",
+  "sync_excludes": {
+    "Code": ["*/node_modules/*", "*/.next/*", "*/dist/*"]
+  }
+}
+```
+
+Only keys listed in `sync_roots` are allowed to sync. The S3 prefix is the key, and the local source is the value.
+
+## Recommended Wake Schedule
+
+`launchd` cannot run a scheduled job while the Mac is asleep. If you want the overnight backup to run reliably, schedule a wake:
+
+```bash
+sudo pmset repeat wakeorpoweron MTWRFSU 03:00:00
+```
 
 ## Operations
 
@@ -141,47 +175,56 @@ Touch a file in `Documents/`, run again — should sync only `Documents`.
 | Manual backup | `~/.backup/s3-backup.sh` |
 | View today's log | `tail -f ~/.backup/logs/backup-$(date +%Y-%m-%d).log` |
 | Check launchd status | `launchctl list \| grep mac-backup` |
+| Preview FSEvents plan | `python3 ~/.backup/fsevents_plan.py plan` |
 | Reload after config change | `./install.sh` |
-| FSEvents plan (dry) | `python3 ~/.backup/fsevents_plan.py plan` |
-| Purge S3 build junk | `~/.backup/purge-s3-junk.sh` |
-
-Logs notify via macOS notification **on failure only**.
-
-## Config reference
-
-See `config.json.example`. Key fields:
-
-| Field | Purpose |
-|-------|---------|
-| `s3_bucket` | Destination `s3://...` URI |
-| `sync_roots` | Allowed sync roots, mapped from S3 prefix name to local path |
-| `personal_dirs` | Daily incremental root names; must be keys in `sync_roots` |
-| `sync_excludes` | Per-root AWS sync exclude patterns, keyed by `sync_roots` name |
-| `fsevents_skip_paths` | FS paths that should not trigger a sync |
-| `schedule.primary_hour` | Main run (default 3) |
-| `schedule.fallback_hour` | Second chance if asleep (default 12) |
-
-## Cost notes
-
-- Storage class is **S3 Glacier Deep Archive** (~$0.00099/GB/mo)
-- Deep Archive has a **180-day minimum** per object version — avoid backing up churning files (logs, WALs, build dirs)
-- FSEvents skip + excludes exist specifically to reduce storage and sync time
+| Remove generated junk already uploaded to S3 | `~/.backup/purge-s3-junk.sh` |
 
 ## Upgrading
 
 ```bash
-cd mac-backup && git pull
+cd mac-backup
+git pull
 ./install.sh
 ```
 
-## Migrating an existing `~/.backup` install
+`install.sh` overwrites the installed scripts but preserves runtime state and logs.
 
-If you already have a working `~/.backup` from manual setup:
+## Cost Notes
 
-1. Create `~/.backup/config.json` from `config.json.example` with your bucket + label
-2. Run `./install.sh` — overwrites scripts but preserves `state/` and `logs/`
-3. Update launchd label in config if changing from a previous plist
+- S3 Glacier Deep Archive is cheap for storage, but retrieval is slow and not free.
+- Deep Archive has minimum storage-duration rules. Avoid backing up noisy files that constantly change.
+- The default global excludes skip common build artifacts and dependency directories.
+- Use `sync_excludes` and `fsevents_skip_paths` aggressively for caches, generated files, virtual machines, database files, and local scratch folders.
+
+## Repo Layout
+
+```text
+mac-backup/
+├── README.md
+├── install.sh
+├── config.json.example
+├── launchd/
+│   └── com.macbackup.s3.plist.template
+├── scripts/
+│   └── s3-backup.sh
+├── src/
+│   ├── config.py
+│   ├── fsevents-changes.c
+│   └── fsevents_plan.py
+├── tests/
+│   └── test_fsevents_plan.py
+└── tools/
+    └── purge-s3-junk.sh
+```
+
+## Development
+
+Run tests with:
+
+```bash
+python3 -m unittest discover -s tests
+```
 
 ## License
 
-Private / personal use.
+No license has been specified yet. Add a `LICENSE` file before publishing this as an open-source project.
