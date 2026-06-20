@@ -64,7 +64,7 @@ Minimum IAM policy:
 ### 3. Clone and configure
 
 ```bash
-git clone https://github.com/YOUR-ORG/mac-backup.git
+git clone https://github.com/yazinsai/mac-backup.git
 cd mac-backup
 
 mkdir -p ~/.backup
