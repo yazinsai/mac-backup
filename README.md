@@ -32,12 +32,12 @@ It watches the folders you choose, works out what changed, and only syncs the co
 
 ## Why Use This?
 
-- You keep control. Backups go to your own AWS account, not a third-party backup service.
-- You save money. Glacier Deep Archive is built for cheap long-term storage.
-- You avoid noisy uploads. Common junk like dependencies, build output, caches, and local scratch folders can be excluded.
-- You do not need to remember it. `launchd` runs backups on a schedule.
-- You can trust the scope. The tool only syncs roots listed in `sync_roots`, and refuses unsafe targets.
-- You get fast no-op runs. If nothing important changed, the backup can finish in seconds.
+- 🧊 **Storage is super cheap.** Files go to S3 Glacier Deep Archive, which is made for low-cost long-term storage.
+- ⚡ **It only uploads what changed.** FSEvents tells the script which roots need work, so most runs are quick.
+- 🧹 **It skips the junk.** Exclude folders like `node_modules`, `.venv`, `dist`, `.next`, caches, downloads, and other rebuildable files.
+- 🔒 **It will not wander off.** Only folders listed in `sync_roots` are allowed to sync, and unsafe targets are rejected.
+- 🕒 **It runs on its own.** `launchd` can run it daily, weekly, or however you schedule it.
+- 🪣 **You own the bucket.** Backups live in your AWS account, with your IAM policy and your lifecycle choices.
 
 ## Quick Start
 
