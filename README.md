@@ -1,6 +1,30 @@
-# mac-backup
+<p align="center">
+  <img src="assets/hero.png" alt="mac-backup: incremental Mac backups to S3 Glacier Deep Archive" width="100%">
+</p>
 
-Simple, cheap, incremental macOS backups to S3 Glacier Deep Archive.
+<h1 align="center">mac-backup</h1>
+
+<p align="center">
+  Simple, cheap, incremental macOS backups to S3 Glacier Deep Archive.
+</p>
+
+<p align="center">
+  <a href="#quick-start"><strong>Quick Start</strong></a>
+  ·
+  <a href="#why-use-this"><strong>Why Use This?</strong></a>
+  ·
+  <a href="#configuration"><strong>Configuration</strong></a>
+  ·
+  <a href="#operations"><strong>Operations</strong></a>
+</p>
+
+<p align="center">
+  <img alt="Platform: macOS" src="https://img.shields.io/badge/platform-macOS-111827?style=for-the-badge&logo=apple&logoColor=white">
+  <img alt="Storage: S3 Glacier Deep Archive" src="https://img.shields.io/badge/storage-S3%20Glacier%20Deep%20Archive-f97316?style=for-the-badge&logo=amazons3&logoColor=white">
+  <img alt="Backups: incremental" src="https://img.shields.io/badge/backups-incremental-22c55e?style=for-the-badge">
+  <img alt="Scheduler: launchd" src="https://img.shields.io/badge/scheduler-launchd-6366f1?style=for-the-badge">
+  <img alt="Tests: Python unittest" src="https://img.shields.io/badge/tests-python%20unittest-3776AB?style=for-the-badge&logo=python&logoColor=white">
+</p>
 
 `mac-backup` is for people who want a real backup of their important Mac folders without paying for a full cloud-drive product, uploading the same files over and over, or accidentally backing up every build artifact on the machine.
 
